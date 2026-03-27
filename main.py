@@ -473,3 +473,271 @@ if __name__ == "__main__":
         port=settings.port,
         log_level=settings.log_level.lower(),
     )
+from fastapi.responses import HTMLResponse
+from fastapi import Request
+import json
+
+@app.get("/", response_class=HTMLResponse)
+async def web_dashboard():
+    """Main web interface - works in any browser."""
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>IB AI Tutor</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body { 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                padding: 20px;
+            }
+            .container {
+                max-width: 800px;
+                margin: 0 auto;
+                background: white;
+                border-radius: 20px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                overflow: hidden;
+            }
+            .header {
+                background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 30px;
+                text-align: center;
+            }
+            .header h1 { font-size: 28px; margin-bottom: 10px; }
+            .header p { opacity: 0.9; }
+            .chat-container {
+                height: 500px;
+                overflow-y: auto;
+                padding: 20px;
+                background: #f8f9fa;
+            }
+            .message {
+                margin: 15px 0;
+                padding: 15px;
+                border-radius: 15px;
+                max-width: 80%;
+                animation: fadeIn 0.3s ease;
+            }
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            .user-message {
+                background: #667eea;
+                color: white;
+                margin-left: auto;
+                text-align: right;
+            }
+            .bot-message {
+                background: white;
+                border: 1px solid #e0e0e0;
+                margin-right: auto;
+            }
+            .input-area {
+                display: flex;
+                padding: 20px;
+                background: white;
+                border-top: 1px solid #e0e0e0;
+            }
+            #userInput {
+                flex: 1;
+                padding: 15px;
+                border: 2px solid #e0e0e0;
+                border-radius: 10px;
+                font-size: 16px;
+                outline: none;
+            }
+            #userInput:focus {
+                border-color: #667eea;
+            }
+            button {
+                padding: 15px 30px;
+                margin-left: 10px;
+                background: #667eea;
+                color: white;
+                border: none;
+                border-radius: 10px;
+                cursor: pointer;
+                font-size: 16px;
+                transition: transform 0.2s;
+            }
+            button:hover {
+                transform: scale(1.05);
+                background: #764ba2;
+            }
+            .quick-commands {
+                padding: 15px 20px;
+                background: #f0f0f0;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+            .cmd-btn {
+                padding: 8px 15px;
+                background: white;
+                border: 1px solid #667eea;
+                color: #667eea;
+                border-radius: 20px;
+                cursor: pointer;
+                font-size: 14px;
+                transition: all 0.2s;
+            }
+            .cmd-btn:hover {
+                background: #667eea;
+                color: white;
+            }
+            .typing {
+                display: none;
+                color: #667eea;
+                font-style: italic;
+                padding: 10px 20px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>🎓 IB AI Tutor</h1>
+                <p>Your personal AI for Math, Business, Economics & more</p>
+            </div>
+            
+            <div class="quick-commands">
+                <button class="cmd-btn" onclick="quickCmd('/math ')">📐 Math</button>
+                <button class="cmd-btn" onclick="quickCmd('/business ')">💼 Business</button>
+                <button class="cmd-btn" onclick="quickCmd('/econ ')">📊 Economics</button>
+                <button class="cmd-btn" onclick="quickCmd('/study plan today')">📚 Study Plan</button>
+                <button class="cmd-btn" onclick="quickCmd('/cas ')">🎯 CAS Ideas</button>
+                <button class="cmd-btn" onclick="quickCmd('/help')">❓ Help</button>
+            </div>
+            
+            <div class="chat-container" id="chatBox">
+                <div class="message bot-message">
+                    <b>🤖 IB Bot:</b><br>
+                    Welcome! I'm your AI tutor for IB Diploma.<br><br>
+                    <b>Quick start:</b><br>
+                    • Type <code>/math differentiate x^2</code><br>
+                    • Click buttons above for common commands<br>
+                    • Ask me anything about IB subjects!
+                </div>
+            </div>
+            
+            <div class="typing" id="typing">🤖 Bot is thinking...</div>
+            
+            <div class="input-area">
+                <input type="text" id="userInput" placeholder="Type your question..." autocomplete="off">
+                <button onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+
+        <script>
+            const chatBox = document.getElementById('chatBox');
+            const userInput = document.getElementById('userInput');
+            const typing = document.getElementById('typing');
+            
+            function quickCmd(cmd) {
+                userInput.value = cmd;
+                userInput.focus();
+            }
+            
+            function addMessage(text, isUser) {
+                const div = document.createElement('div');
+                div.className = 'message ' + (isUser ? 'user-message' : 'bot-message');
+                div.innerHTML = isUser ? '<b>You:</b> ' + text : '<b>🤖 Bot:</b> ' + text;
+                chatBox.appendChild(div);
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+            
+            async function sendMessage() {
+                const text = userInput.value.trim();
+                if (!text) return;
+                
+                addMessage(text, true);
+                userInput.value = '';
+                typing.style.display = 'block';
+                
+                try {
+                    const response = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({message: text})
+                    });
+                    
+                    const data = await response.json();
+                    typing.style.display = 'none';
+                    addMessage(data.response, false);
+                    
+                } catch (error) {
+                    typing.style.display = 'none';
+                    addMessage('❌ Error: Could not connect to bot. Please try again.', false);
+                }
+            }
+            
+            userInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') sendMessage();
+            });
+        </script>
+    </body>
+    </html>
+    """
+
+@app.post("/api/chat")
+async def api_chat(request: dict):
+    """Process chat messages from web interface."""
+    message = request.get("message", "").strip()
+    user_id = 123456789  # Your ID - hardcoded for web use
+    
+    # Route to appropriate handler
+    try:
+        if message.startswith("/math"):
+            from handlers.ib_subjects import MathHandler
+            handler = MathHandler()
+            response = await handler.solve(message.replace("/math ", ""))
+            
+        elif message.startswith("/business"):
+            from handlers.ib_subjects import BusinessHandler
+            handler = BusinessHandler()
+            response = await handler.handle(message.replace("/business ", ""))
+            
+        elif message.startswith("/econ"):
+            from handlers.ib_subjects import EconHandler
+            handler = EconHandler()
+            response = await handler.handle(message.replace("/econ ", ""))
+            
+        elif message.startswith("/study"):
+            from handlers.study_planner import StudyPlanner
+            planner = StudyPlanner()
+            response = await planner.get_plan(user_id)
+            
+        elif message.startswith("/cas"):
+            from handlers.ib_core import CASHandler
+            handler = CASHandler()
+            response = await handler.project_ideas(message.replace("/cas ", ""))
+            
+        elif message.startswith("/help"):
+            response = """
+<b>Available Commands:</b><br>
+📐 <code>/math [problem]</code> - Solve IB Math AA HL<br>
+💼 <code>/business [question]</code> - Business essay help<br>
+📊 <code>/econ [topic]</code> - Economics diagrams & essays<br>
+🌍 <code>/ess [topic]</code> - Environmental Systems<br>
+🇪🇸 <code>/spanish [topic]</code> - Spanish AB practice<br>
+📖 <code>/english [text]</code> - English Lit analysis<br>
+🧠 <code>/tok [topic]</code> - Theory of Knowledge<br>
+🎯 <code>/cas [hours] [interests]</code> - CAS project ideas<br>
+📝 <code>/ee [topic]</code> - Extended essay help<br>
+📚 <code>/study plan today</code> - Daily study schedule<br>
+💡 <code>/idea [business]</code> - Business validator<br>
+❓ <code>/help</code> - Show this message
+            """
+        else:
+            response = "I didn't understand. Type /help for available commands or start with /math, /business, /econ, etc."
+            
+    except Exception as e:
+        response = f"❌ Error processing request: {str(e)}"
+    
+    return {"response": response}

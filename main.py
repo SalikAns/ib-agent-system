@@ -741,3 +741,16 @@ async def api_chat(request: dict):
         response = f"❌ Error processing request: {str(e)}"
     
     return {"response": response}
+    # Add to imports
+from discord_bot import run_discord_bot
+import threading
+
+# At end of file, after FastAPI starts:
+if __name__ == "__main__":
+    # Start Discord bot in background thread
+    discord_thread = threading.Thread(target=run_discord_bot, daemon=True)
+    discord_thread.start()
+    
+    # Start FastAPI
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=settings.PORT)
